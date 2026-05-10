@@ -2,37 +2,38 @@ package com.yuer.magicCamera
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.hardware.Camera
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
-import android.view.TextureView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
+import androidx.core.view.WindowCompat
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
 
-class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
+class MainActivity : AppCompatActivity() {
 
-    private var camera: Camera? = null
-
-    private var cameraId = Camera.CameraInfo.CAMERA_FACING_FRONT
-
-    private lateinit var cameraPreview: TextureView
+    private lateinit var cameraPreview: PreviewView
     private lateinit var detectionView: ImageView
     private lateinit var shutterBtn: ImageButton
 
-    private val CAMERA_PERMISSION_REQUEST = 100
+    private lateinit var cameraExecutor: ExecutorService
+
+    private val cameraPermissionRequest = 100
 
     private var processingThread: HandlerThread? = null
     private var processingHandler: Handler? = null
@@ -42,34 +43,14 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
     private var previewWidth = 640
     private var previewHeight = 480
 
-    private lateinit var surfaceTextureListener: TextureView.SurfaceTextureListener
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ✅ 沉浸式 + 透明状态栏
-        window.apply {
-
-            statusBarColor = Color.TRANSPARENT
-            navigationBarColor = Color.TRANSPARENT
-
-            setFlags(
-                android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            )
-
-            decorView.systemUiVisibility =
-                (android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
-        }
-
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         supportActionBar?.hide()
-
         setContentView(R.layout.activity_main)
 
-        // OpenCV
+        @Suppress("DEPRECATION")
         if (!OpenCVLoader.initDebug()) {
             Toast.makeText(this, "OpenCV init failed", Toast.LENGTH_SHORT).show()
         }
@@ -78,44 +59,8 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
         detectionView = findViewById(R.id.detection_view)
         shutterBtn = findViewById(R.id.btn_shutter)
 
-        shutterBtn.setOnClickListener {
-            // 暂无逻辑
-        }
+        cameraExecutor = Executors.newSingleThreadExecutor()
 
-        // TextureView
-        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-
-            override fun onSurfaceTextureAvailable(
-                surface: android.graphics.SurfaceTexture,
-                width: Int,
-                height: Int
-            ) {
-                openCamera()
-            }
-
-            override fun onSurfaceTextureSizeChanged(
-                surface: android.graphics.SurfaceTexture,
-                width: Int,
-                height: Int
-            ) {}
-
-            override fun onSurfaceTextureDestroyed(
-                surface: android.graphics.SurfaceTexture
-            ): Boolean {
-                releaseCamera()
-                return true
-            }
-
-            override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) {}
-        }
-
-        if (cameraPreview.isAvailable) {
-            openCamera()
-        } else {
-            cameraPreview.surfaceTextureListener = surfaceTextureListener
-        }
-
-        // 权限
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
@@ -124,82 +69,96 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
             ActivityCompat.requestPermissions(
                 this,
                 arrayOf(Manifest.permission.CAMERA),
-                CAMERA_PERMISSION_REQUEST
+                cameraPermissionRequest
             )
+        } else {
+            startCamera()
         }
 
-        // 线程
         processingThread = HandlerThread("CardDetection").apply {
             start()
             processingHandler = Handler(looper)
         }
     }
 
-    private fun openCamera() {
+    private fun startCamera() {
 
-        try {
-            camera = Camera.open(cameraId)
+        val cameraProviderFuture =
+            ProcessCameraProvider.getInstance(this)
 
-            val params = camera!!.parameters
-            val size = params.previewSize
+        cameraProviderFuture.addListener({
 
-            previewWidth = size.width
-            previewHeight = size.height
+            val cameraProvider = cameraProviderFuture.get()
 
-            val info = Camera.CameraInfo()
-            Camera.getCameraInfo(cameraId, info)
+            val preview = Preview.Builder().build()
+            preview.surfaceProvider = cameraPreview.surfaceProvider
 
-            val rotation = windowManager.defaultDisplay.rotation
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
 
-            val degrees = when (rotation) {
-                0 -> 0
-                1 -> 90
-                2 -> 180
-                3 -> 270
-                else -> 0
+            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+
+                if (!isProcessing.compareAndSet(false, true)) {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+
+                processingHandler?.post {
+
+                    try {
+                        previewWidth = imageProxy.width
+                        previewHeight = imageProxy.height
+
+                        val nv21 = imageProxyToNv21(imageProxy)
+
+                        detectPokerCard(nv21)
+
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    } finally {
+                        isProcessing.set(false)
+                        imageProxy.close()
+                    }
+                }
             }
 
-            val result =
-                (360 - (info.orientation + degrees) % 360) % 360
+            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
 
-            camera!!.setDisplayOrientation(result)
+            cameraProvider.unbindAll()
+            cameraProvider.bindToLifecycle(
+                this,
+                cameraSelector,
+                preview,
+                imageAnalysis
+            )
 
-            val bufferSize = previewWidth * previewHeight * 3 / 2
-
-            camera!!.addCallbackBuffer(ByteArray(bufferSize))
-            camera!!.setPreviewCallbackWithBuffer(this)
-            camera!!.setPreviewTexture(cameraPreview.surfaceTexture)
-            camera!!.startPreview()
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun releaseCamera() {
-        camera?.stopPreview()
-        camera?.setPreviewCallbackWithBuffer(null)
-        camera?.release()
-        camera = null
+    private fun imageProxyToNv21(image: ImageProxy): ByteArray {
+
+        val yBuffer = image.planes[0].buffer
+        val uBuffer = image.planes[1].buffer
+        val vBuffer = image.planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        return nv21
     }
 
-    override fun onPreviewFrame(data: ByteArray, camera: Camera) {
-
-        if (!isProcessing.compareAndSet(false, true)) return
-
-        processingHandler?.post {
-            try {
-                detectPokerCard(data)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                isProcessing.set(false)
-                camera.addCallbackBuffer(data)
-            }
-        }
-    }
-
-    private fun detectPokerCard(data: ByteArray) {
+    // =========================
+    // ⭐ 核心统一坐标函数（关键）
+    // =========================
+    private fun normalizeFrame(data: ByteArray): Mat {
 
         val yuv = Mat(
             previewHeight + previewHeight / 2,
@@ -214,9 +173,20 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
         yuv.release()
 
         val rotated = Mat()
-        Core.transpose(rgb, rotated)
-        Core.flip(rotated, rotated, 0)
+
+        // 统一竖屏
+        Core.rotate(rgb, rotated, Core.ROTATE_90_CLOCKWISE)
         rgb.release()
+
+        // ⭐ 前摄镜像修正（统一规则）
+        Core.flip(rotated, rotated, -1)
+
+        return rotated
+    }
+
+    private fun detectPokerCard(data: ByteArray) {
+
+        val rotated = normalizeFrame(data)
 
         val hsv = Mat()
         Imgproc.cvtColor(rotated, hsv, Imgproc.COLOR_RGB2HSV)
@@ -276,11 +246,7 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
             }
         }
 
-        val bmp = Bitmap.createBitmap(
-            rotated.cols(),
-            rotated.rows(),
-            Bitmap.Config.ARGB_8888
-        )
+        val bmp = createBitmap(rotated.cols(), rotated.rows())
 
         org.opencv.android.Utils.matToBitmap(rotated, bmp)
 
@@ -296,7 +262,8 @@ class MainActivity : AppCompatActivity(), Camera.PreviewCallback {
 
     override fun onDestroy() {
         super.onDestroy()
-        releaseCamera()
+
         processingThread?.quitSafely()
+        cameraExecutor.shutdown()
     }
 }
