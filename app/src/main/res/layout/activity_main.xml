@@ -23,8 +23,8 @@
     <!-- 快门按钮 -->
     <ImageButton
         android:id="@+id/btn_shutter"
-        android:layout_width="90dp"
-        android:layout_height="90dp"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
         android:layout_marginBottom="32dp"
         android:background="@drawable/shutter_ring"
         android:contentDescription="快门按钮"
