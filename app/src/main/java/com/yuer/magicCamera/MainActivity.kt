@@ -2,9 +2,8 @@ package com.yuer.magicCamera
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.os.Handler
-import android.os.HandlerThread
+import android.graphics.Bitmap
+import android.os.*
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.Toast
@@ -14,9 +13,11 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.createBitmap
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import java.util.concurrent.ExecutorService
@@ -33,65 +34,89 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
 
-    private val cameraPermissionRequest = 100
-
     private var processingThread: HandlerThread? = null
     private var processingHandler: Handler? = null
 
     private val isProcessing = AtomicBoolean(false)
 
-    private var previewWidth = 640
-    private var previewHeight = 480
+    private var previewWidth = 0
+    private var previewHeight = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // =========================
+        // ⭐ 全屏沉浸（隐藏状态栏+导航栏）
+        // =========================
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        supportActionBar?.hide()
-        setContentView(R.layout.activity_main)
+        hideSystemUI()
 
-        @Suppress("DEPRECATION")
-        if (!OpenCVLoader.initDebug()) {
-            Toast.makeText(this, "OpenCV init failed", Toast.LENGTH_SHORT).show()
-        }
+        supportActionBar?.hide()
+
+        setContentView(R.layout.activity_main)
 
         cameraPreview = findViewById(R.id.camera_preview)
         detectionView = findViewById(R.id.detection_view)
         shutterBtn = findViewById(R.id.btn_shutter)
 
+        // 防止拉伸
+        cameraPreview.scaleType = PreviewView.ScaleType.FIT_CENTER
+        detectionView.scaleType = ImageView.ScaleType.FIT_CENTER
+        detectionView.adjustViewBounds = true
+
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.CAMERA
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                cameraPermissionRequest
-            )
-        } else {
-            startCamera()
+        if (!OpenCVLoader.initDebug()) {
+            Toast.makeText(this, "OpenCV init failed", Toast.LENGTH_SHORT).show()
         }
 
         processingThread = HandlerThread("CardDetection").apply {
             start()
             processingHandler = Handler(looper)
         }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                100
+            )
+        } else {
+            startCamera()
+        }
     }
 
+    // =========================
+    // ⭐ 隐藏状态栏/导航栏
+    // =========================
+    private fun hideSystemUI() {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemUI()
+    }
+
+    // =========================
+    // CameraX
+    // =========================
     private fun startCamera() {
 
-        val cameraProviderFuture =
-            ProcessCameraProvider.getInstance(this)
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
 
             val cameraProvider = cameraProviderFuture.get()
 
-            val preview = Preview.Builder().build()
-            preview.surfaceProvider = cameraPreview.surfaceProvider
+            val preview = Preview.Builder().build().apply {
+                surfaceProvider = cameraPreview.surfaceProvider
+            }
 
             val imageAnalysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -105,7 +130,6 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 processingHandler?.post {
-
                     try {
                         previewWidth = imageProxy.width
                         previewHeight = imageProxy.height
@@ -136,6 +160,9 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    // =========================
+    // YUV -> NV21
+    // =========================
     private fun imageProxyToNv21(image: ImageProxy): ByteArray {
 
         val yBuffer = image.planes[0].buffer
@@ -156,16 +183,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     // =========================
-    // ⭐ 核心统一坐标函数（关键）
+    // ⭐ 坐标统一（已修正镜像逻辑）
     // =========================
     private fun normalizeFrame(data: ByteArray): Mat {
 
-        val yuv = Mat(
-            previewHeight + previewHeight / 2,
-            previewWidth,
-            CvType.CV_8UC1
-        )
-
+        val yuv = Mat(previewHeight + previewHeight / 2, previewWidth, CvType.CV_8UC1)
         yuv.put(0, 0, data)
 
         val rgb = Mat()
@@ -174,28 +196,33 @@ class MainActivity : AppCompatActivity() {
 
         val rotated = Mat()
 
-        // 统一竖屏
+        // 竖屏
         Core.rotate(rgb, rotated, Core.ROTATE_90_CLOCKWISE)
         rgb.release()
 
-        // ⭐ 前摄镜像修正（统一规则）
+        // ⭐ 前摄：只做“上下翻转”（不做左右翻转！）
         Core.flip(rotated, rotated, 0)
 
         return rotated
     }
 
+    // =========================
+    // 检测逻辑
+    // =========================
     private fun detectPokerCard(data: ByteArray) {
 
-        val rotated = normalizeFrame(data)
+        val frame = normalizeFrame(data)
 
         val hsv = Mat()
-        Imgproc.cvtColor(rotated, hsv, Imgproc.COLOR_RGB2HSV)
-
-        val lower = Scalar(0.0, 0.0, 180.0)
-        val upper = Scalar(180.0, 60.0, 255.0)
+        Imgproc.cvtColor(frame, hsv, Imgproc.COLOR_RGB2HSV)
 
         val mask = Mat()
-        Core.inRange(hsv, lower, upper, mask)
+        Core.inRange(
+            hsv,
+            Scalar(0.0, 0.0, 180.0),
+            Scalar(180.0, 60.0, 255.0),
+            mask
+        )
         hsv.release()
 
         val kernel = Imgproc.getStructuringElement(
@@ -222,9 +249,7 @@ class MainActivity : AppCompatActivity() {
             val area = Imgproc.contourArea(c)
             if (area < 8000) continue
 
-            val rect = Imgproc.minAreaRect(
-                MatOfPoint2f(*c.toArray())
-            )
+            val rect = Imgproc.minAreaRect(MatOfPoint2f(*c.toArray()))
 
             val w = rect.size.width
             val h = rect.size.height
@@ -237,7 +262,7 @@ class MainActivity : AppCompatActivity() {
 
             for (i in 0..3) {
                 Imgproc.line(
-                    rotated,
+                    frame,
                     pts[i]!!,
                     pts[(i + 1) % 4]!!,
                     Scalar(0.0, 255.0, 0.0),
@@ -246,15 +271,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val bmp = createBitmap(rotated.cols(), rotated.rows())
+        val bmp = Bitmap.createBitmap(
+            frame.cols(),
+            frame.rows(),
+            Bitmap.Config.ARGB_8888
+        )
 
-        org.opencv.android.Utils.matToBitmap(rotated, bmp)
+        Utils.matToBitmap(frame, bmp)
 
         runOnUiThread {
             detectionView.setImageBitmap(bmp)
         }
 
-        rotated.release()
+        frame.release()
         mask.release()
         kernel.release()
         hierarchy.release()

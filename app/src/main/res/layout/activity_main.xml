@@ -7,18 +7,30 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
+    <!-- 摄像头预览 -->
     <androidx.camera.view.PreviewView
         android:id="@+id/camera_preview"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="fitCenter"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- 识别绘制层（关键修复） -->
     <ImageView
         android:id="@+id/detection_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@android:color/transparent"
-        android:scaleType="fitXY"/>
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
+    <!-- 快门按钮 -->
     <ImageButton
         android:id="@+id/btn_shutter"
         android:layout_width="80dp"
@@ -26,7 +38,6 @@
         android:layout_marginBottom="32dp"
         android:background="@drawable/shutter_ring"
         android:contentDescription="快门按钮"
-        android:scaleType="centerCrop"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"/>
