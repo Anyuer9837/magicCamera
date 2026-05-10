@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
         rgb.release()
 
         // ⭐ 前摄镜像修正（统一规则）
-        Core.flip(rotated, rotated, -1)
+        Core.flip(rotated, rotated, 0)
 
         return rotated
     }
