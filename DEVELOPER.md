@@ -4,6 +4,9 @@
 
 普通用户请参考 **README.md**。
 
+```
+github:https://github.com/Anyuer9837/magicCamera
+```
 ---
 
 ## 📋 项目概述
