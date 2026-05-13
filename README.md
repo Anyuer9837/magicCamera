@@ -2,6 +2,10 @@
 
 > 一个创新的 AR 魔术表演应用，能够实时检测卡牌并将其替换为指定的卡牌图像。
 
+```
+github:https://github.com/Anyuer9837/magicCamera
+```
+
 ---
 
 ## 📱 普通用户使用指南
