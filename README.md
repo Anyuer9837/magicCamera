@@ -46,14 +46,12 @@
 #### ✅ 第 1 步：选择花色
 
 点击画面中的对应区域选择花色：
-
-![花色选择界面](https://www.anyuer.club/zb_users/upload/2026/05/20260513225926177868436697861.png)
+<img width="557" height="935" alt="3b6cc7f1-1ee4-4872-a050-b3f4f76082a6" src="https://github.com/user-attachments/assets/3baa91f7-868c-4bc6-8846-c33fbf59e2dc" />
 
 #### ✅ 第 2 步：选择点数
 
 点击画面中的对应区域选择点数：
-
-![点数选择界面](https://www.anyuer.club/zb_users/upload/2026/05/20260513225919177868435977738.png)
+<img width="293" height="654" alt="cc8fe490-a296-4cd5-a606-86cff50aa408" src="https://github.com/user-attachments/assets/e3730599-a87d-4179-965f-10b39c5fd2e5" />
 
 #### ✨ 选完后的反馈
 
