@@ -9,6 +9,10 @@
 > 开发者想了解技术细节可参考：https://github.com/Anyuer9837/magicCamera/blob/main/DEVELOPER.md
 ---
 
+# 效果展示
+<img width="1599" height="2844" alt="image" src="https://github.com/user-attachments/assets/9200f1aa-6ba3-49de-8c78-29705e13b4e8" />
+<img width="1599" height="2844" alt="image" src="https://github.com/user-attachments/assets/05df6987-5f27-47af-897f-0f590c936e3e" />
+
 ## 📱 普通用户使用指南
 
 ### 🎯 快速开始（3 步操作）
