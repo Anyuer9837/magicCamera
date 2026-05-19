@@ -1,7 +1,11 @@
 # magicCamera — 程序员文档
 
-> 本文档面向开发者和贡献者，说明项目的技术架构、算法实现和开发流程。
+> 本文档面向开发爱好者，说明项目的技术架构、算法实现和开发流程。
 ---
+
+# 效果演示
+
+<img width="1599" height="2844" alt="7af82f4b-6df2-4af5-b752-45ee1b9d15bf" src="https://github.com/user-attachments/assets/6f05c1b8-9ecf-4b0a-ae84-6804e04ff4aa" />
 
 ## 📋 项目概述
 
