@@ -3,6 +3,10 @@
 > 一个创新的 AR 魔术表演应用，通过相机能够实时检测卡牌并将其替换为指定的卡牌图像。
 >
 > 成品下载链接: https://pan.baidu.com/s/1xaaknh7a-EPOW75nTM6IlA?pwd=yuer 提取码: yuer
+>
+> 简易教程可参考：https://www.anyuer.club/?id=283
+>
+> 开发者想了解技术细节可参考：https://github.com/Anyuer9837/magicCamera/blob/main/DEVELOPER.md
 ---
 
 ## 📱 普通用户使用指南
