@@ -1,6 +1,7 @@
 # 神相 🎩✨ — 魔术师的 AR 卡牌应用
 
 > 一个创新的 AR 魔术表演应用，通过相机能够实时检测卡牌并将其替换为指定的卡牌图像。
+> 成品下载链接: https://pan.baidu.com/s/1xaaknh7a-EPOW75nTM6IlA?pwd=yuer 提取码: yuer
 ---
 
 ## 📱 普通用户使用指南
